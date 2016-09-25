@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# 327259279568-upf6djmb7p7u2h4l2s4dviedt19a7bl5.apps.googleusercontent.com
+# SLUyRh6PC6K1q87r4oDPyd5y
 
 import os
 import re
@@ -6,7 +8,7 @@ import argparse
 import mimetypes
 import hashlib
 import time
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import fnmatch
 import tempfile
 import calendar
@@ -14,6 +16,7 @@ import httplib2
 import threading
 
 # from apiclient import discovery
+import io
 from oauth2client import client
 from subprocess import call
 from datetime import timedelta, datetime
@@ -22,7 +25,6 @@ from gdata.photos.service import *
 import gdata.media
 import gdata.geo
 from PIL import Image
-
 
 PICASA_MAX_FREE_IMAGE_DIMENSION = 2048
 
@@ -47,7 +49,8 @@ def which(program):
 
 jHead = which('jhead')
 
-# used https://github.com/jackpal/picasawebuploader/blob/master/main.py and 
+
+# used https://github.com/jackpal/picasawebuploader/blob/master/main.py and
 # http://stackoverflow.com/questions/273946/how-do-i-resize-an-image-using-pil-and-maintain-its-aspect-ratio
 def shrinkIfNeeded(path):
     if args.shrink:
@@ -55,14 +58,14 @@ def shrinkIfNeeded(path):
         try:
             im = Image.open(path)
             if (im.size[0] > PICASA_MAX_FREE_IMAGE_DIMENSION or im.size[1] > PICASA_MAX_FREE_IMAGE_DIMENSION):
-                print "Shrinking " + path
+                print("Shrinking " + path)
                 im.thumbnail((PICASA_MAX_FREE_IMAGE_DIMENSION, PICASA_MAX_FREE_IMAGE_DIMENSION), Image.ANTIALIAS)
                 im.save(imagePath, "JPEG")
                 if (jHead is not None):
                     call(["jhead", "-q", "-te", path, imagePath.name])
                 return imagePath.name
         except IOError:
-            print "cannot create thumbnail for '%s' - using full size image" % path
+            print("cannot create thumbnail for '%s' - using full size image" % path)
     return None
 
 
@@ -72,7 +75,7 @@ def print_timing(func):
         t1 = time.time()
         res = func(*arg)
         t2 = time.time()
-        print '%s took %0.3f ms' % (func.func_name, (t2 - t1) * 1000.0)
+        print('%s took %0.3f ms' % (func.__name__, (t2 - t1) * 1000.0))
         return res
 
     return wrapper
@@ -103,7 +106,7 @@ def InsertVideo(self, album_or_uri, video, filename_or_handle, content_type='ima
                                      'body': 'This is not a valid content type: %s' % content_type,
                                      'reason': 'Accepted content types:'
                                      })
-    if isinstance(filename_or_handle, (str, unicode)) and \
+    if isinstance(filename_or_handle, str) and \
             os.path.exists(filename_or_handle):  # it's a file name
         mediasource = gdata.MediaSource()
         mediasource.setFile(filename_or_handle, content_type)
@@ -111,7 +114,7 @@ def InsertVideo(self, album_or_uri, video, filename_or_handle, content_type='ima
         if hasattr(filename_or_handle, 'seek'):
             filename_or_handle.seek(0)  # rewind pointer to the start of the file
         # gdata.MediaSource needs the content length, so read the whole image
-        file_handle = StringIO.StringIO(filename_or_handle.read())
+        file_handle = io.StringIO(filename_or_handle.read())
         name = 'image'
         if hasattr(filename_or_handle, 'name'):
             name = filename_or_handle.name
@@ -123,8 +126,8 @@ def InsertVideo(self, album_or_uri, video, filename_or_handle, content_type='ima
                                      'reason': 'Found %s, not path name or object with a .read() method' % \
                                                type(filename_or_handle)
                                      })
-
-    if isinstance(album_or_uri, (str, unicode)):  # it's a uri
+    feed_uri = ''
+    if isinstance(album_or_uri, str):  # it's a uri
         feed_uri = album_or_uri
     elif hasattr(album_or_uri, 'GetFeedLink'):  # it's a AlbumFeed object
         feed_uri = album_or_uri.GetFeedLink().href
@@ -132,11 +135,12 @@ def InsertVideo(self, album_or_uri, video, filename_or_handle, content_type='ima
     try:
         return self.Post(video, uri=feed_uri, media_source=mediasource,
                          converter=None)
-    except gdata.service.RequestError, e:
+    except gdata.service.RequestError as e:
         raise GooglePhotosException(e.args[0])
 
 
 gdata.photos.service.PhotosService.InsertVideo = InsertVideo
+
 
 # Class to store details of an album
 class Albums:
@@ -170,17 +174,17 @@ class Albums:
                         fileEntry = FileEntry(relFileName, fullFilename, None, True, album)
                         album.entries[relFileName] = fileEntry
         if verbose:
-            print ("Found " + str(len(fileAlbums)) + " albums on the filesystem")
+            print(("Found " + str(len(fileAlbums)) + " albums on the filesystem"))
         return fileAlbums;
 
     def deleteEmptyWebAlbums(self, owner):
         webAlbums = gd_client.GetUserFeed(user=owner)
         for webAlbum in webAlbums.entry:
             if int(webAlbum.numphotos.text) == 0:
-		if not webAlbum.title.text in immutableFolders:
-                	print "Deleting empty album %s" % webAlbum.title.text
-                	gd_client.Delete(webAlbum)
-                	# @print_timing
+                if not webAlbum.title.text in immutableFolders:
+                    print("Deleting empty album %s" % webAlbum.title.text)
+                    gd_client.Delete(webAlbum)
+                    # @print_timing
 
     def scanWebAlbums(self, owner, deletedups, server_excludes):
         # walk the web album finding albums there
@@ -189,12 +193,12 @@ class Albums:
             webAlbumTitle = Albums.flatten(webAlbum.title.text)
             if re.match(server_excludes, webAlbumTitle):
                 if verbose:
-                    print ('Skipping (because matches server exclude) web-album %s (containing %s files)' % (
-                        webAlbum.title.text, webAlbum.numphotos.text))
+                    print(('Skipping (because matches server exclude) web-album %s (containing %s files)' % (
+                        webAlbum.title.text, webAlbum.numphotos.text)))
             else:
                 if verbose:
-                    print (
-                        'Scanning web-album %s (containing %s files)' % (webAlbum.title.text, webAlbum.numphotos.text))
+                    print((
+                        'Scanning web-album %s (containing %s files)' % (webAlbum.title.text, webAlbum.numphotos.text)))
                 # print "Album %s is %s in %s" % (webAlbumTitle, webAlbumTitle in self.albums,	",".join(self.albums))
                 if webAlbumTitle in self.albums:
                     foundAlbum = self.albums[webAlbumTitle]
@@ -203,7 +207,6 @@ class Albums:
                     album = AlbumEntry(os.path.join(self.rootDirs[0], webAlbum.title.text), webAlbum.title.text)
                     self.albums[webAlbum.title.text] = album
                     self.scanWebPhotos(album, webAlbum, deletedups)
-
 
     # @print_timing
     def scanWebPhotos(self, foundAlbum, webAlbum, deletedups):
@@ -216,16 +219,16 @@ class Albums:
             if photo.title.text == None:
                 photoTitle = ""
             else:
-                photoTitle = urllib.unquote(photo.title.text)
+                photoTitle = urllib.parse.unquote(photo.title.text)
 
             if photoTitle in foundAlbum.entries:
                 entry = foundAlbum.entries[photoTitle]
                 if entry.isWeb():
                     if (deletedups):
-                        print "Deleted dupe of %s on server" % photoTitle
+                        print("Deleted dupe of %s on server" % photoTitle)
                         repeat(lambda: gd_client.Delete(photo), "deleting dupe %s" % photoTitle, False)
                     else:
-                        print "WARNING: More than one copy of %s - ignoring" % photoTitle
+                        print("WARNING: More than one copy of %s - ignoring" % photoTitle)
                 else:
                     entry.setWebReference(photo)
                     # print photo.exif.time
@@ -236,32 +239,32 @@ class Albums:
     # @print_timing
     def uploadMissingAlbumsAndFiles(self, compareattributes, mode, test, allowDelete):
         size = 0
-        for album in self.albums.itervalues():
+        for album in self.albums.values():
             size += len(album.entries)
         count = 0
         actionCounts = {}
         for action in Actions:
             actionCounts[action] = 0
-        for album in self.albums.itervalues():
-            for file in album.entries.itervalues():
+        for album in self.albums.values():
+            for file in album.entries.values():
                 changed = file.changed(compareattributes)
                 if verbose:
-                    print ("%s (%s) #%s/%s - %s" % (mode[changed], changed, str(count), str(size), file.getFullName()))
+                    print(("%s (%s) #%s/%s - %s" % (mode[changed], changed, str(count), str(size), file.getFullName())))
                 if not test:
                     if mode[changed] == Actions.DELETE_LOCAL and not allowDelete[0]:
-                        print (
-                            "Not deleteing local file %s because permissions not granted using allowDelete" % file.getFullName())
+                        print((
+                            "Not deleteing local file %s because permissions not granted using allowDelete" % file.getFullName()))
                     else:
                         if mode[changed] == Actions.DELETE_REMOTE and not allowDelete[1]:
-                            print (
-                                "Not deleteing remote file %s because permissions not granted using allowDelete" % file.getFullName())
+                            print((
+                                "Not deleteing remote file %s because permissions not granted using allowDelete" % file.getFullName()))
                         else:
                             repeat(lambda: getattr(file, mode[changed].lower())(changed),
                                    "%s on %s identified as %s" % (mode[changed], file.getFullName(), changed), False)
                 actionCounts[mode[changed]] += 1
                 count += 1
             album.writeDate()
-        print("Finished transferring files. Total files found %s, composed of %s" % (count, str(actionCounts)))
+        print(("Finished transferring files. Total files found %s, composed of %s" % (count, str(actionCounts))))
 
     @staticmethod
     def createAlbumName(name, index):
@@ -294,18 +297,18 @@ class AlbumEntry:
     def writeDate(self):
         if self.earliestDate != None and noupdatealbummetadata == False:
             if verbose:
-                print "Attempting to write date (" + self.earliestDate + ") to album " + self.albumName
+                print("Attempting to write date (" + self.earliestDate + ") to album " + self.albumName)
             for a in self.webAlbum:
                 album = a.getEditObject()
                 album.timestamp = gdata.photos.Timestamp(text=self.earliestDate)
                 edit_link = album.GetEditLink()
                 if edit_link == None:
-                    print "Warning: Null edit link from " + a.albumTitle + " so skipping metadata update"
+                    print("Warning: Null edit link from " + a.albumTitle + " so skipping metadata update")
                 else:
                     repeat(lambda: gd_client.Put(album, edit_link.href, converter=gdata.photos.AlbumEntryFromString),
                            "Update album metadata for " + a.albumTitle, False)
         else:
-            print "Not Attempting to write date to album " + self.albumName
+            print("Not Attempting to write date to album " + self.albumName)
 
     def __str__(self):
         return (self.getAlbumName() + " under " + self.rootPath + " " + str(len(self.entries)) + " entries " + \
@@ -414,8 +417,8 @@ class FileEntry:
                         return Comparisons.REMOTE_OLDER
                 if compareattributes & 2:
                     if verbose:
-                        print "%s: remote size=%s and local=%s" % (
-                            self.getFullName(), self.remoteSize, self.getLocalSize())
+                        print("%s: remote size=%s and local=%s" % (
+                            self.getFullName(), self.remoteSize, self.getLocalSize()))
                     if self.remoteSize != self.getLocalSize():
                         return Comparisons.DIFFERENT
                 if compareattributes & 4:
@@ -441,10 +444,10 @@ class FileEntry:
         None
 
     def report(self, event):
-        print ("Identified %s as %s - taking no action" % (self.name, event))
+        print(("Identified %s as %s - taking no action" % (self.name, event)))
 
     def tag_remote(self, event):
-        print ("Not implemented tag")
+        print("Not implemented tag")
 
     def replace_remote_with_local(self, event):
         self.delete_remote(event)
@@ -458,20 +461,20 @@ class FileEntry:
 
     def download_remote(self, event):
         if self.type not in chosenFormats:
-            print ("Skipped %s (because can't download file of type %s)." % (self.path, self.type))
+            print(("Skipped %s (because can't download file of type %s)." % (self.path, self.type)))
         elif dateLimit is not None and self.remoteTimestamp < dateLimit:
-            print ("Skipped %s (because remote album pre %s)." % (self.path, time.asctime(dateLimit)))
+            print(("Skipped %s (because remote album pre %s)." % (self.path, time.asctime(dateLimit))))
         else:
             url = self.webUrl
             path = os.path.split(self.path)[0]
             if not os.path.exists(path):
                 os.makedirs(path)
-            urllib.urlretrieve(url, self.path)
+            urllib.request.urlretrieve(url, self.path)
             os.utime(path, (int(self.remoteDate), int(self.remoteDate)))
 
     def delete_remote(self, event):
         gd_client.Delete(self.getEditObject())
-        print ("Deleted %s" % self.getFullName())
+        print(("Deleted %s" % self.getFullName()))
 
     def upload_local(self, event):
         if self.type in chosenFormats:
@@ -485,21 +488,21 @@ class FileEntry:
                 subAlbum = WebAlbum(googleWebAlbum, 0)
                 self.album.webAlbum.append(subAlbum)
                 if verbose:
-                    print ('Created album %s to sync %s' % (subAlbum.albumTitle, self.album.rootPath))
+                    print(('Created album %s to sync %s' % (subAlbum.albumTitle, self.album.rootPath)))
             else:
                 subAlbum = self.album.webAlbum[self.album.webAlbumIndex]
             if self.type in supportedImageFormats:
                 photo = self.upload_local_img(subAlbum)
             if self.type in supportedVideoFormats:
                 if self.getLocalSize() > 1073741824:
-                    print ("Not uploading %s because it exceeds maximum file size" % self.path)
+                    print(("Not uploading %s because it exceeds maximum file size" % self.path))
                 else:
                     photo = self.upload_local_video(subAlbum)
         else:
-            print ("Skipped %s (because can't upload file of type %s)." % (self.path, self.type))
+            print(("Skipped %s (because can't upload file of type %s)." % (self.path, self.type)))
 
     def upload_local_img(self, subAlbum):
-        name = urllib.quote(self.name, '')
+        name = urllib.parse.quote(self.name, '')
         metadata = gdata.photos.PhotoEntry()
         metadata.title = atom.Title(text=name)  # have to quote as certain charecters, e.g. / seem to break it
         self.addMetadata(metadata)
@@ -515,7 +518,7 @@ class FileEntry:
         return photo
 
     def upload_local_video(self, subAlbum):
-        name = urllib.quote(self.name, '')
+        name = urllib.parse.quote(self.name, '')
         metadata = gdata.photos.VideoEntry()
         metadata.title = atom.Title(text=name)  # have to quote as certain charecters, e.g. / seem to break it
         self.addMetadata(metadata)
@@ -527,7 +530,7 @@ class FileEntry:
         metadata.summary = atom.Summary(text=os.path.relpath(self.path, self.album.rootPath), summary_type='text')
         metadata.checksum = gdata.photos.Checksum(text=self.getLocalHash())
         if verbose and (metadata == None):
-            print "Warning: " + self.name + " does not have a date set"
+            print("Warning: " + self.name + " does not have a date set")
 
 
 # Method to translate directory name to an album name	
@@ -554,8 +557,9 @@ def convertDirToAlbum(formElements, root, name, replace, namingextract):
 supportedImageFormats = frozenset(["image/bmp", "image/gif", "image/jpeg", "image/png"])
 # supportedImageFormats = frozenset(["image/jpeg", "image/png"])
 supportedVideoFormats = frozenset(
-    ["video/3gpp", "video/avi", "video/quicktime", "video/mp4", "video/mpeg", "video/mpeg4", "video/msvideo", "video/x-ms-asf", "video/x-ms-wmv", "video/x-msvideo", "video/x-matroska"])
-immutableFolders = frozenset(["Instant Upload","Auto-Backup","Auto Backup"])
+    ["video/3gpp", "video/avi", "video/quicktime", "video/mp4", "video/mpeg", "video/mpeg4", "video/msvideo",
+     "video/x-ms-asf", "video/x-ms-wmv", "video/x-msvideo", "video/x-matroska"])
+immutableFolders = frozenset(["Instant Upload", "Auto-Backup", "Auto Backup"])
 
 
 class Enum(set):
@@ -627,70 +631,72 @@ def convertMode(string):
 
 
 def convertFormat(string):
-	return formats[string]
+    return formats[string]
+
 
 def convertDate(string):
     return time.strptime(string, '%Y-%m-%d')
 
-def repeat(function,  description, onFailRethrow):
-	exc_info = None
-	for attempt in range(3):
-		try:
-			if verbose and (attempt > 0):
-				print ("Trying %s attempt %s" % (description, attempt) )	
-			return function()
-		except Exception,  e:
-			if exc_info == None:
-				exc_info = e
-			# FIXME - to try and stop 403 token expired
-			time.sleep(6)
-			# this should no longer be needed			
-			# gd_client=oauthLogin() 
 
-			continue
-		else:
-			break
-	else:
-		print ("WARNING: Failed to %s. This was due to %s" % (description, exc_info))
-		if onFailRethrow:
-			raise exc_info
-			
+def repeat(function, description, onFailRethrow):
+    exc_info = None
+    for attempt in range(3):
+        try:
+            if verbose and (attempt > 0):
+                print(("Trying %s attempt %s" % (description, attempt)))
+            return function()
+        except Exception as  e:
+            if exc_info == None:
+                exc_info = e
+            # FIXME - to try and stop 403 token expired
+            time.sleep(6)
+            # this should no longer be needed
+            # gd_client=oauthLogin()
+
+            continue
+    else:
+        print(("WARNING: Failed to %s. This was due to %s" % (description, exc_info)))
+        if onFailRethrow:
+            raise exc_info
+
+
 def oauthLogin():
-	# using http://stackoverflow.com/questions/20248555/list-of-spreadsheets-gdata-oauth2/29157967#29157967 (thanks)
-	from oauth2client.file import Storage
+    # using http://stackoverflow.com/questions/20248555/list-of-spreadsheets-gdata-oauth2/29157967#29157967 (thanks)
+    from oauth2client.file import Storage
 
-	filename = os.path.join(os.path.expanduser('~'), ".picasawebsync")
-	storage = Storage(filename)
-	credentials = storage.get()
-	if credentials is None or credentials.invalid:	
-		flow = client.flow_from_clientsecrets('client_secrets.json',scope='https://picasaweb.google.com/data/',redirect_uri='urn:ietf:wg:oauth:2.0:oob')	
-		auth_uri = flow.step1_get_authorize_url()	
-		print 'Authorization URL: %s' % auth_uri
-		auth_code = raw_input('Enter the auth code: ')
-		credentials = flow.step2_exchange(auth_code)
-		storage.put(credentials)
-	# if credentials.access_token_expired:		
-	
-	return refreshCreds(credentials,0)
+    filename = os.path.join(os.path.expanduser('~'), ".picasawebsync")
+    storage = Storage(filename)
+    credentials = storage.get()
+    if credentials is None or credentials.invalid:
+        flow = client.flow_from_clientsecrets('client_secrets.json', scope='https://picasaweb.google.com/data/',
+                                              redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+        auth_uri = flow.step1_get_authorize_url()
+        print('Authorization URL: %s' % auth_uri)
+        auth_code = input('Enter the auth code: ')
+        credentials = flow.step2_exchange(auth_code)
+        storage.put(credentials)
+    # if credentials.access_token_expired:
+
+    return refreshCreds(credentials, 0)
 
 
-def refreshCreds(credentials,sleep):
-        global gd_client	
-        time.sleep(sleep)
-	credentials.refresh(httplib2.Http())	
+def refreshCreds(credentials, sleep):
+    global gd_client
+    time.sleep(sleep)
+    credentials.refresh(httplib2.Http())
 
-	now = datetime.utcnow() 
- 	expires = credentials.token_expiry
-	expires_seconds = (expires-now).seconds 	
-	# print ("Expires %s from %s = %s" % (expires,now,expires_seconds) )
+    now = datetime.utcnow()
+    expires = credentials.token_expiry
+    expires_seconds = (expires - now).seconds
+    # print ("Expires %s from %s = %s" % (expires,now,expires_seconds) )
 
-	gd_client = gdata.photos.service.PhotosService(email='default',additional_headers={'Authorization' : 'Bearer %s' % credentials.access_token})
-	
-	d = threading.Thread(name='refreshCreds', target=refreshCreds, args=(credentials,expires_seconds - 10) )
-	d.setDaemon(True)
-	d.start()
-	return gd_client
-	
+    gd_client = gdata.photos.service.PhotosService(email='default', additional_headers={
+        'Authorization': 'Bearer %s' % credentials.access_token})
+
+    d = threading.Thread(name='refreshCreds', target=refreshCreds, args=(credentials, expires_seconds - 10))
+    d.setDaemon(True)
+    d.start()
+    return gd_client
 
 
 # start of the program
@@ -762,7 +768,7 @@ for comparison in Comparisons:
 excludes = r'|'.join([fnmatch.translate(x) for x in args.skip]) or r'$.'
 server_excludes = r'|'.join([fnmatch.translate(x) for x in args.skipserver]) or r'$.'
 
-print ("Excluding %s on client and %s on server" % (excludes, server_excludes))
+print(("Excluding %s on client and %s on server" % (excludes, server_excludes)))
 
 albums = Albums(rootDirs, albumNaming, excludes, args.replace, args.namingextract)
 albums.scanWebAlbums(args.owner, args.deletedups, server_excludes)
@@ -770,4 +776,3 @@ albums.uploadMissingAlbumsAndFiles(args.compareattributes, mode, args.test, args
 
 if args.purge:
     albums.deleteEmptyWebAlbums(args.owner)
-
